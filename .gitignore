@@ -1,0 +1,52 @@
+# Environment variables (NEVER commit these)
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Cache files
+.cache/
+.parcel-cache/
+
+# Debug logs
+debug/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Scraper cache (can be large)
+scraped_report_cache/*.json
+!scraped_report_cache/.gitkeep
+
+# Large JSON data files (cache)
+*.json
+!scraped_report_cache/.gitkeep
+!types.ts
+
+# Excel report files (examples/outputs)
+*.xlsx
+
+# Node packages lock (optional, can be large)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
