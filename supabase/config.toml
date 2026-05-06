@@ -1,0 +1,8 @@
+# Skip gateway JWT verification so the request reaches the function.
+# The function validates Authorization (Bearer token) and admin/super_admin role itself.
+# See: https://supabase.com/docs/guides/functions/function-configuration#skipping-authorization-checks
+[functions.admin-update-password]
+verify_jwt = false
+
+[functions.admin-invite-user]
+verify_jwt = false

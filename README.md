@@ -1,114 +1,23 @@
-# SAMA - Social Auto Manager
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-Social Media Analytics & Reporting Platform
+# Run and deploy your AI Studio app
 
----
+This contains everything you need to run your app locally.
 
-## Features
+View your app in AI Studio: https://ai.studio/apps/drive/1gD_ahdOBnlQBvSI7W63ISBD39pcCYBV6
 
-- **Multi-Platform Analytics**: Track performance across LinkedIn, Facebook, Instagram, YouTube, Twitter/X, and TikTok
-- **Daily Reports**: Real-time daily performance metrics
-- **Weekly Reports**: Weekly performance overview with trend analysis
-- **Monthly Reports**: Comprehensive monthly reports with detailed breakdowns
-- **Excel Export**: Export reports to Excel format for presentations
+## Run Locally
 
----
+**Prerequisites:**  Node.js
 
-## Tech Stack
 
-- **Frontend**: React + TypeScript + Vite
-- **API Integration**: Ayrshare API
-- **Backend**: Supabase Edge Functions
-- **Caching**: Supabase Database Cache
-
----
-
-## Setup
-
-### 1. Install Dependencies
-
-```bash
-npm install
-```
-
-### 2. Configure Environment Variables
-
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local` with your credentials:
-
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_SUPABASE_SERVICE_KEY=your-service-key
-```
-
-### 3. Supabase Configuration (Optional - for caching)
-
-For better performance and incremental data fetching:
-
-1. Deploy the Supabase Edge Function:
-   ```bash
-   cd supabase
-   supabase functions deploy get-ayrshare-analytics
-   ```
-
-2. Configure Edge Function secrets in Supabase Dashboard:
-   - `AYRSHARE_API_KEY`: Your Ayrshare API key
-   - `REPORT_SECRET`: Team shared secret
-   - `SUPABASE_URL`: Your Supabase project URL
-   - `SUPABASE_SERVICE_ROLE_KEY`: Your service role key
-
-3. Execute the database migration in Supabase SQL Editor:
-   ```sql
-   CREATE TABLE IF NOT EXISTS sama_post_cache (
-     post_id TEXT NOT NULL,
-     profile_key TEXT NOT NULL,
-     created TEXT,
-     fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-     PRIMARY KEY (post_id, profile_key)
-   );
-   ```
-
----
-
-## Development
-
-```bash
-# Start development server
-npm run dev
-
-# Run tests
-npm run test
-
-# Build for production
-npm run build
-```
-
----
-
-## Project Structure
-
-```
-├── components/           # React components
-│   └── AnalyticsReport.tsx  # Main report component
-├── services/            # Business logic
-│   ├── dailyReportService.ts
-│   ├── weeklyReportService.ts
-│   ├── monthlyReportService.ts
-│   └── supabaseApi.ts      # Supabase API layer
-├── context/             # React context providers
-├── lib/                 # Utility libraries
-├── supabase/            # Supabase Edge Functions
-│   └── functions/
-│       └── get-ayrshare-analytics/
-└── docs/                # Documentation
-```
-
----
-
-## License
-
-Private - All rights reserved
+1. Install dependencies:
+   `npm install`
+2. Copy `.env.example` to `.env.local` and set:
+   - `GEMINI_API_KEY` – your Gemini API key (required for content generation)
+   - `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` – optional; when set, uploaded videos and thumbnails are stored in Supabase Storage
+3. **Supabase (optional):** To store videos and thumbnails in Supabase, follow [docs/SETUP_SUPABASE.md](docs/SETUP_SUPABASE.md) (install, create `videos` and `thumbnails` buckets, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env`).
+4. Run the app:
+   `npm run dev`
