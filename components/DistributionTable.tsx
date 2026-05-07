@@ -104,7 +104,7 @@ const DistributionTable: React.FC<DistributionTableProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
       <table className="w-full text-left border-collapse">
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
@@ -184,7 +184,7 @@ const DistributionTable: React.FC<DistributionTableProps> = ({
                     </button>
                     {openMenuProjectId === project.id && (
                       <div
-                        className="absolute right-0 top-full mt-1 py-1 w-40 bg-white rounded-lg border border-slate-200 shadow-lg z-10"
+                        className="absolute right-0 top-full mt-1 py-1 w-40 bg-white rounded-lg border border-slate-200 shadow-lg z-50"
                         role="menu"
                       >
                         <button
