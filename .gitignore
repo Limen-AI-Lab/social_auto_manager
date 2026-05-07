@@ -30,6 +30,7 @@ yarn-error.log*
 # IDE
 .idea/
 .vscode/
+SAMA.code-workspace
 *.swp
 *.swo
 
@@ -45,6 +46,10 @@ scraped_report_cache/*.json
 *.json
 !scraped_report_cache/.gitkeep
 !types.ts
+!package.json
+!package-lock.json
+!vercel.json
+!tsconfig.json
 
 # Excel report files (examples/outputs)
 *.xlsx
