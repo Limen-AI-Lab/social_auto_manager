@@ -315,7 +315,9 @@ const App: React.FC = () => {
       return;
     }
     if (role === 'editor' || role === 'viewer') {
-      fetchAllowedBusinessUnitIds(user.id).then(setAllowedBuIds);
+      fetchAllowedBusinessUnitIds(user.id).then((ids) => {
+        setAllowedBuIds(ids);
+      });
     }
   }, [isAuthConfigured, user?.id, role]);
 
@@ -347,6 +349,8 @@ const App: React.FC = () => {
       allowedBuIds: fullAccess ? null : (allowedBuIds ?? []),
     }).then((data) => {
       setProjects(data);
+    }).catch((error: unknown) => {
+      setToastMessage('Failed to load projects. Please refresh and try again.');
     }).finally(() => setProjectsLoading(false));
   }, [isAuthConfigured, user?.id, role, allowedBuIds]);
 

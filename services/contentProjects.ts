@@ -50,13 +50,30 @@ export async function fetchProjects(options: FetchProjectsOptions): Promise<Cont
   const fullAccess = role === 'super_admin' || role === 'admin' || allowedBuIds === null;
   let query = supabase.from('content_projects').select('*').order('created_at', { ascending: false });
   if (!fullAccess) {
-    if (allowedBuIds.length === 0) return [];
+    if (allowedBuIds.length === 0) {
+      return [];
+    }
     query = query.in('business_unit', allowedBuIds);
   }
-  const { data, error } = await query;
-  if (error) {
-    console.error('[contentProjects] fetch error', error);
-    return [];
+  let data: ContentProjectRow[] | null = null;
+  let lastError: { code?: string; message?: string } | null = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const result = await query;
+    if (!result.error) {
+      data = (result.data as ContentProjectRow[] | null) ?? [];
+      break;
+    }
+    lastError = { code: result.error.code ?? undefined, message: result.error.message ?? undefined };
+    const isTimeout = result.error.code === '57014' || (result.error.message ?? '').toLowerCase().includes('timeout');
+    if (!isTimeout || attempt === 3) {
+      break;
+    }
+  }
+  if (!data) {
+    const err = new Error(lastError?.message ?? 'fetchProjects failed');
+    (err as Error & { code?: string }).code = lastError?.code;
+    console.error('[contentProjects] fetch error', lastError);
+    throw err;
   }
   return (data ?? []).map((row) => rowToProject(row as ContentProjectRow));
 }
