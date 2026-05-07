@@ -15,6 +15,67 @@ const createClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+const RETRYABLE_HTTP_STATUS = new Set([429, 500, 502, 503, 504]);
+const DEFAULT_MAX_RETRIES = 4;
+const BASE_RETRY_DELAY_MS = 1200;
+const GEMINI_MODEL_CANDIDATES = ["gemini-2.5-flash", "gemini-2.0-flash"];
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const extractHttpStatus = (error: unknown): number | null => {
+  if (!error || typeof error !== "object") return null;
+  const maybe = error as { status?: number; message?: string };
+  if (typeof maybe.status === "number") return maybe.status;
+  if (typeof maybe.message !== "string") return null;
+  const matched = maybe.message.match(/"code"\s*:\s*(\d{3})/);
+  return matched ? Number(matched[1]) : null;
+};
+
+const isRetryableGeminiError = (error: unknown): boolean => {
+  const status = extractHttpStatus(error);
+  return status !== null && RETRYABLE_HTTP_STATUS.has(status);
+};
+
+const runWithRetry = async <T>(operation: () => Promise<T>, label: string): Promise<T> => {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= DEFAULT_MAX_RETRIES; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const status = extractHttpStatus(error);
+      if (!isRetryableGeminiError(error) || attempt === DEFAULT_MAX_RETRIES) {
+        throw error;
+      }
+      const jitter = Math.floor(Math.random() * 300);
+      const delay = BASE_RETRY_DELAY_MS * 2 ** (attempt - 1) + jitter;
+      console.warn(`${label} failed (attempt ${attempt}/${DEFAULT_MAX_RETRIES}), retrying in ${delay}ms...`, error);
+      await sleep(delay);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`${label} failed after retries`);
+};
+
+const generateWithModelFallback = async (
+  ai: GoogleGenAI,
+  params: Omit<Parameters<GoogleGenAI["models"]["generateContent"]>[0], "model">,
+  label: string
+) => {
+  let lastError: unknown = null;
+  for (const model of GEMINI_MODEL_CANDIDATES) {
+    try {
+      return await runWithRetry(() => ai.models.generateContent({ model, ...params }), `${label} [${model}]`);
+    } catch (error) {
+      lastError = error;
+      const status = extractHttpStatus(error);
+      if (status !== 503 && status !== 429) {
+        throw error;
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`${label} failed for all model candidates`);
+};
+
 // Helper to convert File to Base64 for inlineData
 const fileToPart = async (file: File) => {
   return new Promise<{ inlineData: { data: string; mimeType: string } }>((resolve, reject) => {
@@ -140,47 +201,50 @@ export const generateSocialMatrix = async (
     // Convert video file to inline data
     const videoPart = await fileToPart(videoFile);
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: {
-        parts: [
-          videoPart,
-          {
-            text: `Analyze this video. Context provided by user: "${videoContext || 'No additional context provided'}". Generate a social media content matrix. You MUST output exactly one content object for each of these platforms (do not skip any): ${platformList}. Include title, content, and hashtags for every platform listed. Follow the per-platform instructions in the system prompt for tone, length limits, and hashtag rules.`
-          }
-        ]
-      },
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              platform: {
-                type: Type.STRING,
-                enum: ["linkedin", "facebook", "twitter", "instagram", "tiktok", "youtube"],
-              },
-              title: {
-                type: Type.STRING,
-                description: "A catchy headline or video title",
-              },
-              content: {
-                type: Type.STRING,
-                description: "The main post body or video script description",
-              },
-              hashtags: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "3-5 relevant hashtags",
+    const response = await generateWithModelFallback(
+      ai,
+      {
+          contents: {
+            parts: [
+              videoPart,
+              {
+                text: `Analyze this video. Context provided by user: "${videoContext || 'No additional context provided'}". Generate a social media content matrix. You MUST output exactly one content object for each of these platforms (do not skip any): ${platformList}. Include title, content, and hashtags for every platform listed. Follow the per-platform instructions in the system prompt for tone, length limits, and hashtag rules.`
+              }
+            ]
+          },
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  platform: {
+                    type: Type.STRING,
+                    enum: ["linkedin", "facebook", "twitter", "instagram", "tiktok", "youtube"],
+                  },
+                  title: {
+                    type: Type.STRING,
+                    description: "A catchy headline or video title",
+                  },
+                  content: {
+                    type: Type.STRING,
+                    description: "The main post body or video script description",
+                  },
+                  hashtags: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                    description: "3-5 relevant hashtags",
+                  },
+                },
+                required: ["platform", "title", "content", "hashtags"],
               },
             },
-            required: ["platform", "title", "content", "hashtags"],
           },
         },
-      },
-    });
+      "Gemini content generation"
+    );
 
     const text = response.text;
     if (!text) return [];
@@ -208,12 +272,16 @@ export const generateSocialMatrix = async (
 
   } catch (error) {
     console.error("Gemini Generation Error:", error);
+    const status = extractHttpStatus(error);
+    const isServiceBusy = status === 503 || status === 429;
     // Return fallback data in case of error
     return [
       {
         platform: 'linkedin',
         title: 'Error generating content',
-        content: `Could not analyze video. Error: ${(error as Error).message}. Ensure the video is less than 20MB for browser-based processing, or check your API key.`,
+        content: isServiceBusy
+          ? "AI service is temporarily busy. Please retry in 1-2 minutes."
+          : `Could not analyze video. Error: ${(error as Error).message}. Ensure the video is less than 20MB for browser-based processing, or check your API key.`,
         hashtags: ['#error'],
         status: 'draft',
         selected: false
@@ -246,41 +314,44 @@ export const regenerateSinglePlatform = async (
   try {
     const videoPart = await buildVideoPart(videoInput);
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: {
-        parts: [
-          videoPart,
-          {
-            text: `Analyze this video. Context: "${videoContext || 'No additional context'}". ${userInstruction} Generate exactly one content object for the platform: ${platformId}. Include title, content, and hashtags. Follow the per-platform instructions in the system prompt.`
-          }
-        ]
-      },
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              platform: {
-                type: Type.STRING,
-                enum: ["linkedin", "facebook", "twitter", "instagram", "tiktok", "youtube"],
-              },
-              title: { type: Type.STRING, description: "Headline or video title" },
-              content: { type: Type.STRING, description: "Main post body or description" },
-              hashtags: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "Relevant hashtags",
+    const response = await generateWithModelFallback(
+      ai,
+      {
+          contents: {
+            parts: [
+              videoPart,
+              {
+                text: `Analyze this video. Context: "${videoContext || 'No additional context'}". ${userInstruction} Generate exactly one content object for the platform: ${platformId}. Include title, content, and hashtags. Follow the per-platform instructions in the system prompt.`
+              }
+            ]
+          },
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  platform: {
+                    type: Type.STRING,
+                    enum: ["linkedin", "facebook", "twitter", "instagram", "tiktok", "youtube"],
+                  },
+                  title: { type: Type.STRING, description: "Headline or video title" },
+                  content: { type: Type.STRING, description: "Main post body or description" },
+                  hashtags: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                    description: "Relevant hashtags",
+                  },
+                },
+                required: ["platform", "title", "content", "hashtags"],
               },
             },
-            required: ["platform", "title", "content", "hashtags"],
           },
         },
-      },
-    });
+      "Gemini single platform regeneration"
+    );
 
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
